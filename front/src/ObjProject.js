@@ -11,28 +11,47 @@ import {
   SliderTrack,
   SliderFilledTrack,
   SliderThumb,
+  Wrap,
+  WrapItem,
 } from "@chakra-ui/react";
 import WaveSurfer from "wavesurfer.js";
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions";
 import { convertToWav } from "./audioUtils";
+import withParams from "./withParams";
 
 class ObjProject extends React.Component {
   constructor(props) {
     super(props);
-    this.state = {
+    const projectId = this.props.params.id;
+    const savedProject = JSON.parse(
+      localStorage.getItem(`project-${projectId}`)
+    ) || {
       files: [],
       audioUrls: [],
+      selectedFileIndex: null,
+      chunks: [],
+    };
+    this.state = {
+      ...savedProject,
       processing: false,
       progress: 0,
       error: null,
       isPlaying: false,
       volume: 0.5,
       zoom: 50,
-      chunks: [], // Add chunks to the state
     };
-    this.waveSurferInstances = {};
-    this.waveSurferRefs = {};
+    this.waveSurferInstance = null;
+    this.waveSurferRef = React.createRef();
+    this.timelineRef = React.createRef();
+    this.projectId = projectId;
+  }
+
+  componentDidUpdate() {
+    localStorage.setItem(
+      `project-${this.projectId}`,
+      JSON.stringify(this.state)
+    );
   }
 
   handleFileChange = async (e) => {
@@ -40,6 +59,7 @@ class ObjProject extends React.Component {
     this.setState({
       files: selectedFiles,
       audioUrls: [],
+      selectedFileIndex: null,
       processing: true,
       progress: 0,
       error: null,
@@ -62,125 +82,127 @@ class ObjProject extends React.Component {
     this.setState({ progress });
   };
 
-  initWaveSurfer = (url, index) => {
-    if (!this.waveSurferInstances[index]) {
-      const container = this.waveSurferRefs[`wavesurfer-${index}`];
-      const regionsPlugin = RegionsPlugin.create();
-      const waveSurfer = WaveSurfer.create({
-        container,
-        waveColor: "violet",
-        progressColor: "purple",
-        responsive: true,
-        height: 100,
-        plugins: [
-          TimelinePlugin.create({
-            container: `#timeline-${index}`,
-          }),
-          regionsPlugin,
-        ],
-      });
-      waveSurfer.load(url);
-      waveSurfer.on("play", () => this.setState({ isPlaying: true }));
-      waveSurfer.on("pause", () => this.setState({ isPlaying: false }));
-      waveSurfer.on("ready", () => {
-        waveSurfer.setVolume(this.state.volume);
-        waveSurfer.plugins.regions = regionsPlugin; // Assign regionsPlugin to waveSurfer.plugins.regions
-      });
-      this.waveSurferInstances[index] = waveSurfer;
+  initWaveSurfer = (url) => {
+    if (this.waveSurferInstance) {
+      this.waveSurferInstance.destroy();
+    }
+    const regionsPlugin = RegionsPlugin.create();
+    this.waveSurferInstance = WaveSurfer.create({
+      container: this.waveSurferRef.current,
+      waveColor: "violet",
+      progressColor: "purple",
+      responsive: true,
+      height: 100,
+      plugins: [
+        TimelinePlugin.create({
+          container: this.timelineRef.current,
+        }),
+        regionsPlugin,
+      ],
+    });
+    this.waveSurferInstance.load(url);
+    this.waveSurferInstance.on("play", () =>
+      this.setState({ isPlaying: true })
+    );
+    this.waveSurferInstance.on("pause", () =>
+      this.setState({ isPlaying: false })
+    );
+    this.waveSurferInstance.on("ready", () => {
+      this.waveSurferInstance.setVolume(this.state.volume);
+      this.waveSurferInstance.zoom(this.state.zoom);
+      this.waveSurferInstance.plugins.regions = regionsPlugin;
+    });
+  };
+
+  handlePlayPause = () => {
+    if (this.waveSurferInstance) {
+      this.waveSurferInstance.playPause();
     }
   };
 
-  setWaveSurferRef = (el, index) => {
-    if (el && !this.waveSurferRefs[`wavesurfer-${index}`]) {
-      this.waveSurferRefs[`wavesurfer-${index}`] = el;
-      this.initWaveSurfer(this.state.audioUrls[index], index);
-    }
-  };
-
-  handlePlayPause = (index) => {
-    const waveSurfer = this.waveSurferInstances[index];
-    if (waveSurfer) {
-      waveSurfer.playPause();
-    }
-  };
-
-  handleVolumeChange = (value, index) => {
-    const waveSurfer = this.waveSurferInstances[index];
-    if (waveSurfer) {
-      waveSurfer.setVolume(value);
+  handleVolumeChange = (value) => {
+    if (this.waveSurferInstance) {
+      this.waveSurferInstance.setVolume(value);
       this.setState({ volume: value });
     }
   };
 
-  handleZoomChange = (value, index) => {
-    const waveSurfer = this.waveSurferInstances[index];
-    if (waveSurfer) {
-      waveSurfer.zoom(value);
+  handleZoomChange = (value) => {
+    if (this.waveSurferInstance) {
+      this.waveSurferInstance.zoom(value);
       this.setState({ zoom: value });
     }
   };
 
-  addRegion = (waveSurfer, regionsPlugin) => {
-    if (waveSurfer && regionsPlugin) {
-      regionsPlugin.addRegion({
+  addRegion = () => {
+    if (this.waveSurferInstance && this.waveSurferInstance.plugins.regions) {
+      this.waveSurferInstance.plugins.regions.addRegion({
         start: 1,
         end: 3,
         color: "rgba(0, 255, 0, 0.1)",
       });
-    } else {
-      console.error("WaveSurfer or regionsPlugin is not initialized");
     }
   };
 
-  addMultipleRegions = (index) => {
-    const waveSurfer = this.waveSurferInstances[index];
-    if (waveSurfer && waveSurfer.plugins.regions) {
-      const regionsPlugin = waveSurfer.plugins.regions;
-      const duration = waveSurfer.getDuration(); // Get the total duration of the audio
-      for (let i = 0; i < duration; i++) {
-        const start = i; // Start of the region
-        const end = i + 1; // End of the region (1 second after start)
+  addMultipleRegions = () => {
+    if (this.waveSurferInstance && this.waveSurferInstance.plugins.regions) {
+      const regionsPlugin = this.waveSurferInstance.plugins.regions;
+      const duration = this.waveSurferInstance.getDuration();
+      const chunkSize = 1; // Fixed chunk size of 1 second
+      for (let i = 0; i < duration; i += chunkSize) {
+        const start = i;
+        const end = i + chunkSize;
         regionsPlugin.addRegion({
           start,
           end,
-          color: `rgba(0, 255, 0, 0.1)`, // Adjust this to change the color of each region
+          color: `rgba(0, 255, 0, 0.1)`,
         });
       }
-      // Get the list of regions
       const regions = regionsPlugin.list;
       if (regions) {
-        // Check if regions is not undefined
-        // Create a list of chunks
-        const chunks = regions.map((region, index) => ({
+        const chunks = Object.values(regions).map((region, index) => ({
           id: index,
           start: region.start,
           end: region.end,
         }));
-        // Update the state with the list of chunks
         this.setState({ chunks });
-      } else {
-        console.error("Regions are not yet populated");
       }
-    } else {
-      console.error("WaveSurfer or regionsPlugin is not initialized");
     }
+  };
+
+  handleFileSelect = (index) => {
+    this.setState({ selectedFileIndex: index }, () => {
+      this.initWaveSurfer(this.state.audioUrls[index]);
+    });
   };
 
   render() {
     const {
       files,
       audioUrls,
+      selectedFileIndex,
       processing,
       progress,
       error,
       isPlaying,
       volume,
       zoom,
-      chunks, // Add chunks to the state
+      chunks,
     } = this.state;
 
     return (
-      <Box borderWidth="1px" borderRadius="lg" p={4} mb={4}>
+      <Box
+        height="100vh"
+        width="100vw"
+        p={4}
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        bg="gray.800"
+        color="white"
+        overflow="hidden"
+      >
         <Input
           type="file"
           multiple
@@ -188,37 +210,53 @@ class ObjProject extends React.Component {
           mt={4}
           accept="audio/*"
         />
-        {processing && <Progress value={progress} mt={2} />}
+        {processing && <Progress value={progress} mt={2} width="100%" />}
         {error && (
           <Text color="red.500" mt={2}>
             {error}
           </Text>
         )}
-        <VStack mt={4} spacing={4} align="stretch">
-          {files.map((file, index) => (
-            <Box key={index} p={2} borderWidth="1px" borderRadius="lg">
-              <Text>{file.name}</Text>
-            </Box>
-          ))}
-          {audioUrls.map((url, index) => (
-            <Box key={index} p={2} borderWidth="1px" borderRadius="lg">
-              <Text mb={2}>Audio {index + 1}</Text>
-              <div
-                ref={(el) => this.setWaveSurferRef(el, index)}
-                id={`wavesurfer-${index}`}
-              ></div>
-              <div id={`timeline-${index}`}></div>
-              <HStack mt={2} spacing={4}>
-                <Button onClick={() => this.handlePlayPause(index)}>
+        <VStack spacing={4} align="stretch" width="100%">
+          <Wrap spacing={4} justify="center">
+            {files.map((file, index) => (
+              <WrapItem key={index}>
+                <Box
+                  p={2}
+                  borderWidth="1px"
+                  borderRadius="lg"
+                  cursor="pointer"
+                  bg={selectedFileIndex === index ? "teal.500" : "gray.700"}
+                  onClick={() => this.handleFileSelect(index)}
+                >
+                  <Text>{file.name}</Text>
+                </Box>
+              </WrapItem>
+            ))}
+          </Wrap>
+          {selectedFileIndex !== null && audioUrls[selectedFileIndex] && (
+            <Box
+              p={4}
+              borderWidth="1px"
+              borderRadius="lg"
+              bg="gray.700"
+              width="100%"
+              overflow="hidden"
+            >
+              <Text mb={2}>Audio {selectedFileIndex + 1}</Text>
+              <div ref={this.waveSurferRef}></div>
+              <div ref={this.timelineRef}></div>
+              <HStack mt={2} spacing={4} width="100%">
+                <Button onClick={this.handlePlayPause}>
                   {isPlaying ? "Pause" : "Play"}
                 </Button>
                 <Text>Volume:</Text>
                 <Slider
-                  defaultValue={volume}
+                  value={volume}
                   min={0}
                   max={1}
                   step={0.1}
-                  onChange={(v) => this.handleVolumeChange(v, index)}
+                  onChange={this.handleVolumeChange}
+                  width="150px"
                 >
                   <SliderTrack>
                     <SliderFilledTrack />
@@ -227,27 +265,19 @@ class ObjProject extends React.Component {
                 </Slider>
                 <Text>Zoom:</Text>
                 <Slider
-                  defaultValue={zoom}
+                  value={zoom}
                   min={0}
                   max={100}
-                  onChange={(v) => this.handleZoomChange(v, index)}
+                  onChange={this.handleZoomChange}
+                  width="150px"
                 >
                   <SliderTrack>
                     <SliderFilledTrack />
                   </SliderTrack>
                   <SliderThumb />
                 </Slider>
-                <Button
-                  onClick={() =>
-                    this.addRegion(
-                      this.waveSurferInstances[index],
-                      RegionsPlugin.create()
-                    )
-                  }
-                >
-                  Add Region
-                </Button>
-                <Button onClick={() => this.addMultipleRegions(index)}>
+                <Button onClick={this.addRegion}>Add Region</Button>
+                <Button onClick={this.addMultipleRegions}>
                   Add Multiple Regions
                 </Button>
               </HStack>
@@ -271,11 +301,11 @@ class ObjProject extends React.Component {
                 </Box>
               )}
             </Box>
-          ))}
+          )}
         </VStack>
       </Box>
     );
   }
 }
 
-export default ObjProject;
+export default withParams(ObjProject);
