@@ -13,12 +13,23 @@ import {
   SliderThumb,
   Wrap,
   WrapItem,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Stack,
+  StackDivider,
 } from "@chakra-ui/react";
+
+import { toast } from "react-toastify";
 import WaveSurfer from "wavesurfer.js";
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions";
 import { convertToWav } from "./audioUtils";
 import withParams from "./withParams";
+
+import ObjLabelManager from "./ObjLabelManager";
 
 class ObjProject extends React.Component {
   constructor(props) {
@@ -72,8 +83,21 @@ class ObjProject extends React.Component {
   processFiles = async (files) => {
     const audioUrls = [];
     for (const file of files) {
-      const audioUrl = await convertToWav(file, this.updateProgress);
-      audioUrls.push(audioUrl);
+      try {
+        const audioUrl = await convertToWav(file, this.updateProgress);
+        audioUrls.push(audioUrl);
+      } catch (error) {
+        console.error(`Error loading file ${file.name}:`, error);
+        toast.error(`Error loading file ${file.name}: ${error.message}`, {
+          position: "bottom-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+        });
+      }
     }
     return audioUrls;
   };
@@ -149,6 +173,7 @@ class ObjProject extends React.Component {
       const regionsPlugin = this.waveSurferInstance.plugins.regions;
       const duration = this.waveSurferInstance.getDuration();
       const chunkSize = 1; // Fixed chunk size of 1 second
+
       for (let i = 0; i < duration; i += chunkSize) {
         const start = i;
         const end = i + chunkSize;
@@ -158,13 +183,17 @@ class ObjProject extends React.Component {
           color: `rgba(0, 255, 0, 0.1)`,
         });
       }
-      const regions = regionsPlugin.list;
+
+      console.log(regionsPlugin);
+
+      const regions = regionsPlugin.regions; // Updated to use regions array
       if (regions) {
-        const chunks = Object.values(regions).map((region, index) => ({
-          id: index,
+        const chunks = regions.map((region, index) => ({
+          id: region.id,
           start: region.start,
           end: region.end,
         }));
+        console.log("Chunks:", chunks); // Log chunks to console
         this.setState({ chunks });
       }
     }
@@ -172,7 +201,31 @@ class ObjProject extends React.Component {
 
   handleFileSelect = (index) => {
     this.setState({ selectedFileIndex: index }, () => {
-      this.initWaveSurfer(this.state.audioUrls[index]);
+      if (this.waveSurferRef.current && this.timelineRef.current) {
+        try {
+          this.initWaveSurfer(this.state.audioUrls[index]);
+        } catch (error) {
+          toast.error(`Error initializing WaveSurfer: ${error.message}`, {
+            position: "bottom-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            progress: undefined,
+          });
+        }
+      } else {
+        toast.error("Container not found", {
+          position: "bottom-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          progress: undefined,
+        });
+      }
     });
   };
 
@@ -189,120 +242,154 @@ class ObjProject extends React.Component {
       zoom,
       chunks,
     } = this.state;
-
-    return (
-      <Box
-        height="100vh"
-        width="100vw"
+    /*  height="100vh"
+        width="100%"
         p={4}
         display="flex"
         flexDirection="column"
         justifyContent="center"
         alignItems="center"
         bg="gray.800"
-        color="white"
-        overflow="hidden"
-      >
-        <Input
-          type="file"
-          multiple
-          onChange={this.handleFileChange}
-          mt={4}
-          accept="audio/*"
-        />
-        {processing && <Progress value={progress} mt={2} width="100%" />}
-        {error && (
-          <Text color="red.500" mt={2}>
-            {error}
-          </Text>
-        )}
-        <VStack spacing={4} align="stretch" width="100%">
-          <Wrap spacing={4} justify="center">
-            {files.map((file, index) => (
-              <WrapItem key={index}>
-                <Box
-                  p={2}
-                  borderWidth="1px"
-                  borderRadius="lg"
-                  cursor="pointer"
-                  bg={selectedFileIndex === index ? "teal.500" : "gray.700"}
-                  onClick={() => this.handleFileSelect(index)}
-                >
-                  <Text>{file.name}</Text>
-                </Box>
-              </WrapItem>
-            ))}
-          </Wrap>
-          {selectedFileIndex !== null && audioUrls[selectedFileIndex] && (
-            <Box
-              p={4}
-              borderWidth="1px"
-              borderRadius="lg"
-              bg="gray.700"
-              width="100%"
-              overflow="hidden"
-            >
-              <Text mb={2}>Audio {selectedFileIndex + 1}</Text>
-              <div ref={this.waveSurferRef}></div>
-              <div ref={this.timelineRef}></div>
-              <HStack mt={2} spacing={4} width="100%">
-                <Button onClick={this.handlePlayPause}>
-                  {isPlaying ? "Pause" : "Play"}
-                </Button>
-                <Text>Volume:</Text>
-                <Slider
-                  value={volume}
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  onChange={this.handleVolumeChange}
-                  width="150px"
-                >
-                  <SliderTrack>
-                    <SliderFilledTrack />
-                  </SliderTrack>
-                  <SliderThumb />
-                </Slider>
-                <Text>Zoom:</Text>
-                <Slider
-                  value={zoom}
-                  min={0}
-                  max={100}
-                  onChange={this.handleZoomChange}
-                  width="150px"
-                >
-                  <SliderTrack>
-                    <SliderFilledTrack />
-                  </SliderTrack>
-                  <SliderThumb />
-                </Slider>
-                <Button onClick={this.addRegion}>Add Region</Button>
-                <Button onClick={this.addMultipleRegions}>
-                  Add Multiple Regions
-                </Button>
-              </HStack>
-              {chunks && (
-                <Box mt={4}>
-                  <Text mb={2}>Chunks:</Text>
-                  <VStack align="stretch">
-                    {chunks.map((chunk) => (
+        color="white"*/
+    return (
+      <Box>
+        <Tabs
+          isFitted
+          variant="soft-rounded"
+          colorScheme="green"
+          minH="100vh"
+          width="100%"
+          bg="gray.800"
+        >
+          <TabList>
+            <Tab>Label Manager</Tab>
+            <Tab>Audio Labeling</Tab>
+            <Tab>Chunk Converter</Tab>
+            <Tab>AI Trainer</Tab>
+          </TabList>
+          <TabPanels h="95%">
+            <TabPanel>
+              <ObjLabelManager />
+            </TabPanel>
+            <TabPanel>
+              <Input
+                type="file"
+                multiple
+                onChange={this.handleFileChange}
+                mt={4}
+                accept="audio/*"
+              />
+              {processing && <Progress value={progress} mt={2} width="100%" />}
+              {error && (
+                <Text color="red.500" mt={2}>
+                  {error}
+                </Text>
+              )}
+              <VStack spacing={4} align="stretch" width="100%">
+                <Wrap spacing={4} justify="center">
+                  {files.map((file, index) => (
+                    <WrapItem key={index}>
                       <Box
-                        key={chunk.id}
                         p={2}
                         borderWidth="1px"
                         borderRadius="lg"
+                        cursor="pointer"
+                        bg={
+                          selectedFileIndex === index ? "teal.500" : "gray.700"
+                        }
+                        onClick={() => this.handleFileSelect(index)}
                       >
-                        <Text>
-                          Chunk {chunk.id}: {chunk.start}s - {chunk.end}s
-                        </Text>
+                        <Text>{file.name}</Text>
                       </Box>
-                    ))}
-                  </VStack>
-                </Box>
-              )}
-            </Box>
-          )}
-        </VStack>
+                    </WrapItem>
+                  ))}
+                </Wrap>
+                {selectedFileIndex !== null && audioUrls[selectedFileIndex] && (
+                  <Box
+                    p={4}
+                    borderWidth="1px"
+                    borderRadius="lg"
+                    bg="gray.700"
+                    width="100%"
+                  >
+                    <VStack
+                      divider={<StackDivider borderColor="gray.200" />}
+                      spacing={4}
+                      align="stretch"
+                    >
+                      <Text mb={2}>Audio {selectedFileIndex + 1}</Text>
+                      <div ref={this.waveSurferRef}></div>
+                      <div ref={this.timelineRef}></div>
+                      <HStack mt={2} spacing={4} width="100%">
+                        <Button onClick={this.handlePlayPause}>
+                          {isPlaying ? "Pause" : "Play"}
+                        </Button>
+                        <Text>Volume:</Text>
+                        <Slider
+                          value={volume}
+                          min={0}
+                          max={1}
+                          step={0.1}
+                          onChange={this.handleVolumeChange}
+                          width="150px"
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Text>Zoom:</Text>
+                        <Slider
+                          value={zoom}
+                          min={0}
+                          max={100}
+                          onChange={this.handleZoomChange}
+                          width="150px"
+                        >
+                          <SliderTrack>
+                            <SliderFilledTrack />
+                          </SliderTrack>
+                          <SliderThumb />
+                        </Slider>
+                        <Button onClick={this.addRegion}>Add Region</Button>
+                        <Button onClick={this.addMultipleRegions}>
+                          Add Multiple Regions
+                        </Button>
+                      </HStack>
+                      {chunks && (
+                        <Box mt={4} h="40vh" overflow={"auto"}>
+                          <Text mb={2}>Chunks:</Text>
+                          <VStack align="stretch">
+                            {chunks.map((chunk) => (
+                              <Box
+                                key={chunk.id}
+                                p={2}
+                                borderWidth="1px"
+                                borderRadius="lg"
+                              >
+                                <Text>
+                                  Chunk {chunk.id}: {chunk.start}s - {chunk.end}
+                                  s
+                                </Text>
+                              </Box>
+                            ))}
+                          </VStack>
+                        </Box>
+                      )}
+                    </VStack>
+                  </Box>
+                )}
+              </VStack>
+            </TabPanel>
+
+            <TabPanel>
+              <p>three!</p>
+            </TabPanel>
+            <TabPanel>
+              <p>four!</p>
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </Box>
     );
   }

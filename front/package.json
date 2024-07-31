@@ -19,6 +19,7 @@
     "react-icons": "^5.2.1",
     "react-router-dom": "^6.25.1",
     "react-scripts": "5.0.1",
+    "react-toastify": "^10.0.5",
     "wavesurfer-react": "^3.0.3",
     "wavesurfer.js": "^7.8.2",
     "web-vitals": "^2.1.4"
