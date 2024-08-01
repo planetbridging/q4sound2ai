@@ -1,5 +1,14 @@
 import React, { Component } from "react";
-import { Box, VStack, Text, Flex, Spacer, Button } from "@chakra-ui/react";
+import {
+  Box,
+  VStack,
+  Text,
+  Flex,
+  Spacer,
+  Button,
+  Checkbox,
+  Progress,
+} from "@chakra-ui/react";
 import WaveSurfer from "wavesurfer.js";
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 import SpectrogramPlugin from "wavesurfer.js/dist/plugins/spectrogram";
@@ -16,26 +25,54 @@ class ObjChunkConverter extends Component {
       chunkUrl: null,
       chunkDuration: 0,
       isPlaying: false,
-      labeledData: [],
+      labeledData: new Map(),
+      generatingAll: false,
+      progress: 0,
     };
+    this.waveSurferInstance = null; // Initialize waveSurferInstance as null
   }
 
-  handleGenerateSpectrogram = async (chunkData) => {
+  handleGenerateAllSpectrograms = async () => {
+    const { mapChunkWithLabel } = this.props;
+    const chunkEntries = Array.from(mapChunkWithLabel.entries());
+    this.setState({ generatingAll: true, progress: 0 });
+
+    for (let i = 0; i < chunkEntries.length; i++) {
+      const [chunkId, chunkData] = chunkEntries[i];
+      const key = `${chunkData.uniqPassFile.name}_${chunkId}`;
+      if (!this.state.labeledData.has(key)) {
+        console.log(`Generating spectrogram for: ${key}`);
+        await this.handleGenerateSpectrogram(chunkData, true);
+        this.setState({ progress: ((i + 1) / chunkEntries.length) * 100 });
+      }
+    }
+
+    this.setState({ generatingAll: false });
+  };
+
+  handleGenerateSpectrogram = async (chunkData, isBatch = false) => {
     const { uniqPassFile, uniqPassIn, lstCats } = chunkData;
     const start = uniqPassIn.start;
     const end = uniqPassIn.end;
 
     try {
       const chunkUrl = await convertToWavChunk(uniqPassFile, start, end, null);
+      console.log(`Converted to WAV: ${chunkUrl}`);
       this.setState({ chunkUrl }, () => {
-        this.initWaveSurfer(chunkUrl, lstCats);
+        this.initWaveSurfer(
+          chunkUrl,
+          uniqPassFile.name,
+          chunkData.uniqPassIn.id,
+          lstCats,
+          isBatch
+        );
       });
     } catch (error) {
       console.error("Error generating spectrogram:", error);
     }
   };
 
-  initWaveSurfer = (url, labels) => {
+  initWaveSurfer = (url, fileName, chunkId, labels, isBatch) => {
     if (this.waveSurferInstance) {
       this.waveSurferInstance.destroy();
     }
@@ -66,7 +103,7 @@ class ObjChunkConverter extends Component {
       this.setState({ chunkDuration: duration });
 
       // Extract spectrogram data
-      this.extractSpectrogramData(labels);
+      this.extractSpectrogramData(fileName, chunkId, labels, isBatch);
     });
     this.waveSurferInstance.on("error", (error) => {
       console.error("Error loading audio data:", error);
@@ -79,10 +116,19 @@ class ObjChunkConverter extends Component {
     );
   };
 
-  extractSpectrogramData = (labels) => {
-    // Extract spectrogram data from the spectrogram plugin
+  extractSpectrogramData = (fileName, chunkId, labels, isBatch) => {
     const canvas = this.spectrogramRef.current.querySelector("canvas");
+    if (!canvas) {
+      console.error("Canvas element not found.");
+      return;
+    }
+
     const context = canvas.getContext("2d");
+    if (!context) {
+      console.error("Failed to get 2D context.");
+      return;
+    }
+
     const pixelData = context.getImageData(
       0,
       0,
@@ -96,12 +142,27 @@ class ObjChunkConverter extends Component {
       spectrogramData.push(avg / 255.0); // Normalize to [0, 1]
     }
 
-    this.setState((prevState) => ({
-      labeledData: [
-        ...prevState.labeledData,
-        { spectrogram: spectrogramData, labels: labels },
-      ],
-    }));
+    const key = `${fileName}_${chunkId}`;
+    this.setState((prevState) => {
+      const updatedMap = new Map(prevState.labeledData);
+      updatedMap.set(key, { spectrogram: spectrogramData, labels: labels });
+      return { labeledData: updatedMap };
+    });
+
+    console.log(`Spectrogram data extracted for: ${key}`);
+
+    if (isBatch) {
+      this.cleanUpWaveSurferInstance();
+    }
+  };
+
+  cleanUpWaveSurferInstance = () => {
+    if (this.waveSurferInstance) {
+      this.waveSurferInstance.unAll();
+      this.waveSurferInstance.destroy();
+      this.waveSurferInstance = null;
+      console.log("WaveSurfer instance cleaned up.");
+    }
   };
 
   handlePlayPause = () => {
@@ -112,41 +173,67 @@ class ObjChunkConverter extends Component {
 
   render() {
     const { mapChunkWithLabel } = this.props;
-    const { chunkUrl, chunkDuration, isPlaying, labeledData } = this.state;
+    const {
+      chunkUrl,
+      chunkDuration,
+      isPlaying,
+      labeledData,
+      generatingAll,
+      progress,
+    } = this.state;
 
     return (
       <Box>
-        <VStack spacing={4} align="stretch">
+        <Button
+          onClick={this.handleGenerateAllSpectrograms}
+          disabled={generatingAll}
+        >
+          {generatingAll ? "Generating..." : "Generate All Spectrograms"}
+        </Button>
+        {generatingAll && <Progress value={progress} size="sm" mt={2} />}
+        <VStack spacing={4} align="stretch" mt={4}>
           {Array.from(mapChunkWithLabel.entries()).map(
-            ([chunkId, chunkData]) => (
-              <Box
-                key={chunkId}
-                p={4}
-                borderWidth="1px"
-                borderRadius="lg"
-                bg="gray.700"
-                width="100%"
-              >
-                <Flex>
-                  <Text>
-                    Chunk {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
-                    {chunkData.uniqPassIn.end}s
-                  </Text>
-                  <Spacer />
-                  <VStack align="stretch">
-                    <Text>File: {chunkData.uniqPassFile.name}</Text>
-                    <Text>Category: {chunkData.lstCats[0]}</Text>
-                    <Text>Subcategory: {chunkData.lstCats[1]}</Text>
-                    <Text>Sub-subcategory: {chunkData.lstCats[2]}</Text>
-                    <Button
-                      onClick={() => this.handleGenerateSpectrogram(chunkData)}
-                    >
-                      Generate Spectrogram
-                    </Button>
-                  </VStack>
-                </Flex>
-              </Box>
-            )
+            ([chunkId, chunkData]) => {
+              const key = `${chunkData.uniqPassFile.name}_${chunkId}`;
+              const isChecked = labeledData.has(key);
+              return (
+                <Box
+                  key={chunkId}
+                  p={4}
+                  borderWidth="1px"
+                  borderRadius="lg"
+                  bg="gray.700"
+                  width="100%"
+                >
+                  <Flex>
+                    <Text>
+                      Chunk {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
+                      {chunkData.uniqPassIn.end}s
+                    </Text>
+                    <Spacer />
+                    <VStack align="stretch">
+                      <Text>File: {chunkData.uniqPassFile.name}</Text>
+                      <Text>Category: {chunkData.lstCats[0]}</Text>
+                      <Text>Subcategory: {chunkData.lstCats[1]}</Text>
+                      <Text>Sub-subcategory: {chunkData.lstCats[2]}</Text>
+                      <Checkbox isChecked={isChecked} isDisabled>
+                        Processed
+                      </Checkbox>
+                      <Button
+                        onClick={() =>
+                          this.handleGenerateSpectrogram(chunkData)
+                        }
+                        disabled={isChecked}
+                      >
+                        {isChecked
+                          ? "Already Generated"
+                          : "Generate Spectrogram"}
+                      </Button>
+                    </VStack>
+                  </Flex>
+                </Box>
+              );
+            }
           )}
         </VStack>
         {chunkUrl && (
@@ -164,7 +251,9 @@ class ObjChunkConverter extends Component {
         )}
         <Box mt={4}>
           <Text>Labeled Data:</Text>
-          <pre>{JSON.stringify(labeledData, null, 2)}</pre>
+          <pre>
+            {JSON.stringify(Array.from(labeledData.entries()), null, 2)}
+          </pre>
         </Box>
       </Box>
     );
