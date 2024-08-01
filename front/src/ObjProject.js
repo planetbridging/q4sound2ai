@@ -20,6 +20,8 @@ import {
   TabPanel,
   Stack,
   StackDivider,
+  Flex,
+  Spacer,
 } from "@chakra-ui/react";
 
 import { toast } from "react-toastify";
@@ -30,6 +32,8 @@ import { convertToWav } from "./audioUtils";
 import withParams from "./withParams";
 
 import ObjLabelManager from "./ObjLabelManager";
+import ObjSelectLabel from "./ObjSelectLabel";
+import ObjChunkConverter from "./ObjChunkConverter";
 
 class ObjProject extends React.Component {
   constructor(props) {
@@ -51,6 +55,8 @@ class ObjProject extends React.Component {
       isPlaying: false,
       volume: 0.5,
       zoom: 50,
+      lstLabels: {},
+      mapChunkWithLabel: new Map(),
     };
     this.waveSurferInstance = null;
     this.waveSurferRef = React.createRef();
@@ -64,6 +70,16 @@ class ObjProject extends React.Component {
       JSON.stringify(this.state)
     );
   }
+
+  handleDataFromChildObjLabels = (data) => {
+    this.setState({ lstLabels: data });
+  };
+
+  handleDataFromChildChunkWithLabel = (data) => {
+    const { mapChunkWithLabel } = this.state;
+    mapChunkWithLabel.set(data.uniqPassIn.id, data);
+    this.setState({ mapChunkWithLabel: mapChunkWithLabel });
+  };
 
   handleFileChange = async (e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -241,7 +257,10 @@ class ObjProject extends React.Component {
       volume,
       zoom,
       chunks,
+      lstLabels,
+      mapChunkWithLabel,
     } = this.state;
+
     /*  height="100vh"
         width="100%"
         p={4}
@@ -269,7 +288,9 @@ class ObjProject extends React.Component {
           </TabList>
           <TabPanels h="95%">
             <TabPanel>
-              <ObjLabelManager />
+              <ObjLabelManager
+                sendDataToParent={this.handleDataFromChildObjLabels}
+              />
             </TabPanel>
             <TabPanel>
               <Input
@@ -367,10 +388,25 @@ class ObjProject extends React.Component {
                                 borderWidth="1px"
                                 borderRadius="lg"
                               >
-                                <Text>
-                                  Chunk {chunk.id}: {chunk.start}s - {chunk.end}
-                                  s
-                                </Text>
+                                <Flex>
+                                  <Text>
+                                    Chunk {chunk.id}: {chunk.start}s -{" "}
+                                    {chunk.end}s
+                                  </Text>
+                                  <Spacer />
+                                  <ObjSelectLabel
+                                    data={lstLabels}
+                                    uniqPassIn={chunk}
+                                    sendDataToParent={
+                                      this.handleDataFromChildChunkWithLabel
+                                    }
+                                    uniqPassFile={
+                                      this.state.files[
+                                        this.state.selectedFileIndex
+                                      ]
+                                    }
+                                  />
+                                </Flex>
                               </Box>
                             ))}
                           </VStack>
@@ -383,7 +419,7 @@ class ObjProject extends React.Component {
             </TabPanel>
 
             <TabPanel>
-              <p>three!</p>
+              <ObjChunkConverter mapChunkWithLabel={mapChunkWithLabel} />
             </TabPanel>
             <TabPanel>
               <p>four!</p>

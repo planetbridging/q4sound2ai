@@ -67,7 +67,7 @@ class ObjLabelManager extends Component {
         newData[category][subcategory].push(subsubcategory);
       }
     }
-
+    this.props.sendDataToParent(newData);
     this.setState({
       data: newData,
       category: "",
@@ -115,6 +115,8 @@ class ObjLabelManager extends Component {
         ? data[selectedCategory][selectedSubcategory] || []
         : [];
 
+    //console.log(data);
+
     return (
       <Box>
         <VStack spacing={4} align="stretch">
@@ -134,7 +136,7 @@ class ObjLabelManager extends Component {
               value={subsubcategory}
               onChange={this.handleSubsubcategoryChange}
             />
-            <Button onClick={this.addLabel}>Add Label</Button>
+            <Button onClick={this.addLabel}>Add</Button>
           </HStack>
           <Box mt={4}>
             <HStack>
