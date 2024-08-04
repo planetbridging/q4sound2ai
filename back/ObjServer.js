@@ -16,8 +16,6 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
 });
 
-const User = mongoose.model("User", userSchema);
-
 class ObjServer {
   constructor() {
     this.app = express();
@@ -41,11 +39,20 @@ class ObjServer {
     this.initializeRoutes();
   }
 
-  connectDatabase() {
-    mongoose
-      .connect(process.env.MONGO_URI)
-      .then(() => console.log("MongoDB connected"))
-      .catch((err) => console.error(err));
+  async connectDatabase() {
+    try {
+      await mongoose.connect(process.env.MONGO_URI);
+      console.log("MongoDB connected");
+
+      // Switch to the specified database
+      this.db = mongoose.connection.useDb(process.env.MONGODB);
+      console.log(`Switched to database: ${process.env.MONGODB}`);
+
+      // Create the User model using the new database connection
+      this.User = this.db.model("User", userSchema);
+    } catch (err) {
+      console.error("MongoDB connection error:", err);
+    }
   }
 
   initializeMiddlewares() {
@@ -90,7 +97,7 @@ class ObjServer {
     const { username, password, email } = req.body;
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
-      const user = new User({ username, email, password: hashedPassword });
+      const user = new this.User({ username, email, password: hashedPassword });
       await user.save();
       res.status(200).json({ message: "User registered successfully" });
     } catch (error) {
@@ -101,7 +108,7 @@ class ObjServer {
   async loginUser(req, res) {
     const { username, password } = req.body;
     try {
-      const user = await User.findOne({ username });
+      const user = await this.User.findOne({ username });
       if (!user) {
         return res.status(400).json({ error: "Invalid username or password" });
       }
