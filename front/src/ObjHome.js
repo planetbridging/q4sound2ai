@@ -79,7 +79,9 @@ class ObjHome extends React.Component {
 
   handleSelectProject = (project) => {
     if (project.isAccepted) {
-      this.props.navigate(`/projects/${project._id}`);
+      this.props.navigate(`/projects/${project._id}`, {
+        state: { projectId: project._id },
+      });
     } else {
       console.log("You do not have access to this project.");
     }

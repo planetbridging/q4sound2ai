@@ -24,6 +24,59 @@ class ObjLabelManager extends Component {
     };
   }
 
+  componentDidMount() {
+    console.log(this.props.projectId);
+    if (this.props.projectId) {
+      this.fetchLabels();
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.props.projectId !== prevProps.projectId && this.props.projectId) {
+      this.fetchLabels();
+    }
+  }
+
+  fetchLabels = async () => {
+    try {
+      const response = await fetch(
+        `/api/projects/${this.props.projectId}/labels`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+          },
+        }
+      );
+      const data = await response.json();
+      if (data.labels) {
+        this.setState({ data: data.labels });
+      }
+    } catch (error) {
+      console.error("Error fetching labels:", error);
+    }
+  };
+
+  saveLabels = async (labels) => {
+    try {
+      const response = await fetch(
+        `/api/projects/${this.props.projectId}/labels`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+          },
+          body: JSON.stringify({ labels }),
+        }
+      );
+      const data = await response.json();
+      console.log(data.message);
+    } catch (error) {
+      console.error("Error saving labels:", error);
+    }
+  };
+
   handleCategoryChange = (event) => {
     this.setState({ category: event.target.value });
   };
@@ -68,6 +121,7 @@ class ObjLabelManager extends Component {
       }
     }
     this.props.sendDataToParent(newData);
+    this.saveLabels(newData);
     this.setState({
       data: newData,
       category: "",
@@ -114,8 +168,6 @@ class ObjLabelManager extends Component {
       selectedCategory && selectedSubcategory
         ? data[selectedCategory][selectedSubcategory] || []
         : [];
-
-    //console.log(data);
 
     return (
       <Box>

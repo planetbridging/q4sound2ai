@@ -21,6 +21,7 @@ const projectSchema = new mongoose.Schema({
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   acceptedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   accessRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  labels: { type: Object, default: {} }, // Add labels field
 });
 
 projectSchema.pre("save", function (next) {
@@ -126,6 +127,17 @@ class ObjServer {
       this.acceptProjectAccessRequest.bind(this)
     );
 
+    this.app.get(
+      "/api/projects/:projectId/labels",
+      this.verifyToken.bind(this),
+      this.getProjectLabels.bind(this)
+    );
+    this.app.post(
+      "/api/projects/:projectId/labels",
+      this.verifyToken.bind(this),
+      this.updateProjectLabels.bind(this)
+    );
+
     this.app.use(
       "/",
       createProxyMiddleware({
@@ -198,6 +210,53 @@ class ObjServer {
         );
         await project.save();
         res.status(200).json({ message: "User accepted to the project" });
+      } else {
+        res.status(404).json({ error: "Project not found" });
+      }
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async getProjectLabels(req, res) {
+    const { projectId } = req.params;
+    try {
+      const project = await this.Project.findById(projectId);
+      const user = await this.User.findOne({ username: req.username });
+      if (project) {
+        const isAccepted = project.acceptedUsers.includes(user._id);
+        if (isAccepted) {
+          res.status(200).json({ labels: project.labels });
+        } else {
+          res
+            .status(403)
+            .json({ error: "You do not have access to this project" });
+        }
+      } else {
+        res.status(404).json({ error: "Project not found" });
+      }
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async updateProjectLabels(req, res) {
+    const { projectId } = req.params;
+    const { labels } = req.body;
+    try {
+      const project = await this.Project.findById(projectId);
+      const user = await this.User.findOne({ username: req.username });
+      if (project) {
+        const isAccepted = project.acceptedUsers.includes(user._id);
+        if (isAccepted) {
+          project.labels = labels;
+          await project.save();
+          res.status(200).json({ message: "Labels updated successfully" });
+        } else {
+          res
+            .status(403)
+            .json({ error: "You do not have access to this project" });
+        }
       } else {
         res.status(404).json({ error: "Project not found" });
       }

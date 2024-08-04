@@ -57,6 +57,7 @@ class ObjProject extends React.Component {
       zoom: 50,
       lstLabels: {},
       mapChunkWithLabel: new Map(),
+      projectId: projectId,
     };
     this.waveSurferInstance = null;
     this.waveSurferRef = React.createRef();
@@ -259,6 +260,7 @@ class ObjProject extends React.Component {
       chunks,
       lstLabels,
       mapChunkWithLabel,
+      projectId,
     } = this.state;
 
     /*  height="100vh"
@@ -290,6 +292,7 @@ class ObjProject extends React.Component {
             <TabPanel>
               <ObjLabelManager
                 sendDataToParent={this.handleDataFromChildObjLabels}
+                projectId={projectId}
               />
             </TabPanel>
             <TabPanel>
