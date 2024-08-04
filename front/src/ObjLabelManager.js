@@ -25,7 +25,6 @@ class ObjLabelManager extends Component {
   }
 
   componentDidMount() {
-    console.log(this.props.projectId);
     if (this.props.projectId) {
       this.fetchLabels();
     }
@@ -50,6 +49,7 @@ class ObjLabelManager extends Component {
       );
       const data = await response.json();
       if (data.labels) {
+        this.props.sendDataToParent(data.labels);
         this.setState({ data: data.labels });
       }
     } catch (error) {
