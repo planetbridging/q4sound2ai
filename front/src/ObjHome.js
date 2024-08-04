@@ -7,6 +7,7 @@ import {
   HStack,
   Heading,
   Text,
+  Flex,
 } from "@chakra-ui/react";
 import { AddIcon } from "@chakra-ui/icons";
 import { motion } from "framer-motion";
@@ -52,78 +53,77 @@ class ObjHome extends React.Component {
 
   render() {
     const { projects, newProjectName } = this.state;
+
     return (
-      <Box
-        height="100vh"
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        bg="teal.600"
-        bgImage="url('https://www.transparenttextures.com/patterns/cubes.png')"
-        bgSize="cover"
-        color="white"
-        p={4}
-      >
-        <VStack
-          spacing={6}
-          as={motion.div}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1 }}
+      <Flex align="center" justify="center" height="100vh" bg="gray.900">
+        <Box
+          width="350px"
+          p="6"
+          boxShadow="lg"
+          borderRadius="md"
+          bg="gray.800"
+          color="white"
         >
-          <Heading as="h1" size="2xl" mb={4}>
-            Q4Sound2AI
-          </Heading>
-          <HStack>
-            <Input
-              placeholder="New project name"
-              value={newProjectName}
-              onChange={this.handleInputChange}
-              bg="white"
-              color="black"
-            />
-            <Button
-              onClick={this.handleAddProject}
-              colorScheme="teal"
-              leftIcon={<AddIcon />}
-            >
-              Add Project
-            </Button>
-          </HStack>
-          {projects.length === 0 ? (
-            <Text>No projects yet. Start by adding a new project.</Text>
-          ) : (
-            <VStack spacing={4} align="stretch" width="100%">
-              {projects.map((project) => (
-                <Box
-                  key={project.id}
-                  p={2}
-                  borderWidth="1px"
-                  borderRadius="lg"
-                  bg="gray.700"
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  cursor="pointer"
-                  onClick={() => this.handleSelectProject(project)}
-                >
-                  <Text>{project.name}</Text>
-                  <Button
-                    colorScheme="red"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      this.handleDeleteProject(project.id);
-                    }}
+          <VStack
+            spacing={6}
+            as={motion.div}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1 }}
+          >
+            <Heading as="h1" size="2xl" mb={4}>
+              Q4Sound2AI
+            </Heading>
+            <HStack>
+              <Input
+                placeholder="New project name"
+                value={newProjectName}
+                onChange={this.handleInputChange}
+                bg="white"
+                color="black"
+              />
+              <Button
+                onClick={this.handleAddProject}
+                colorScheme="teal"
+                leftIcon={<AddIcon />}
+              >
+                Add Project
+              </Button>
+            </HStack>
+            {projects.length === 0 ? (
+              <Text>No projects yet. Start by adding a new project.</Text>
+            ) : (
+              <VStack spacing={4} align="stretch" width="100%">
+                {projects.map((project) => (
+                  <Box
+                    key={project.id}
+                    p={2}
+                    borderWidth="1px"
+                    borderRadius="lg"
+                    bg="gray.700"
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    cursor="pointer"
+                    onClick={() => this.handleSelectProject(project)}
                   >
-                    Delete
-                  </Button>
-                </Box>
-              ))}
-            </VStack>
-          )}
-        </VStack>
-      </Box>
+                    <Text>{project.name}</Text>
+                    <Button
+                      colorScheme="red"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        this.handleDeleteProject(project.id);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </Box>
+                ))}
+              </VStack>
+            )}
+          </VStack>
+        </Box>
+      </Flex>
     );
   }
 }
