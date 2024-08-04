@@ -16,30 +16,60 @@ import withNavigation from "./withNavigation";
 class ObjHome extends React.Component {
   constructor(props) {
     super(props);
-    const savedProjects = JSON.parse(localStorage.getItem("projects")) || [];
     this.state = {
-      projects: savedProjects,
+      projects: [],
       newProjectName: "",
+      accessRequests: [],
+      currentProjectId: null,
     };
   }
 
-  componentDidUpdate() {
-    localStorage.setItem("projects", JSON.stringify(this.state.projects));
+  componentDidMount() {
+    this.fetchProjects();
   }
 
-  handleAddProject = () => {
-    const { newProjectName, projects } = this.state;
-    if (newProjectName) {
-      this.setState({
-        projects: [...projects, { name: newProjectName, id: Date.now() }],
-        newProjectName: "",
+  fetchProjects = async () => {
+    try {
+      const response = await fetch("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+        },
       });
+      const data = await response.json();
+      this.setState({ projects: data.projects });
+    } catch (error) {
+      console.error("Error fetching projects:", error);
     }
   };
 
-  handleDeleteProject = (id) => {
+  handleAddProject = async () => {
+    const { newProjectName } = this.state;
+    if (newProjectName) {
+      try {
+        const response = await fetch("/api/projects", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+          },
+          body: JSON.stringify({ name: newProjectName }),
+        });
+        const data = await response.json();
+        this.setState((prevState) => ({
+          projects: [...prevState.projects, data.project],
+          newProjectName: "",
+        }));
+      } catch (error) {
+        console.error("Error adding project:", error);
+      }
+    }
+  };
+
+  handleDeleteProject = async (id) => {
+    // Add backend call to delete project if necessary
     this.setState((prevState) => ({
-      projects: prevState.projects.filter((project) => project.id !== id),
+      projects: prevState.projects.filter((project) => project._id !== id),
     }));
   };
 
@@ -48,11 +78,73 @@ class ObjHome extends React.Component {
   };
 
   handleSelectProject = (project) => {
-    this.props.navigate(`/projects/${project.id}`);
+    if (project.isAccepted) {
+      this.props.navigate(`/projects/${project._id}`);
+    } else {
+      console.log("You do not have access to this project.");
+    }
+  };
+
+  handleRequestAccess = async (projectId) => {
+    try {
+      const response = await fetch(
+        `/api/projects/request-access/${projectId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+          },
+        }
+      );
+      const data = await response.json();
+      console.log(data.message);
+    } catch (error) {
+      console.error("Error requesting access:", error);
+    }
+  };
+
+  fetchAccessRequests = async (projectId) => {
+    try {
+      const response = await fetch(
+        `/api/projects/access-requests/${projectId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+          },
+        }
+      );
+      const data = await response.json();
+      this.setState({
+        accessRequests: data.accessRequests,
+        currentProjectId: projectId,
+      });
+    } catch (error) {
+      console.error("Error fetching access requests:", error);
+    }
+  };
+
+  handleAcceptRequest = async (userId) => {
+    const { currentProjectId } = this.state;
+    try {
+      const response = await fetch("/api/projects/accept-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${document.cookie.replace("token=", "")}`,
+        },
+        body: JSON.stringify({ projectId: currentProjectId, userId }),
+      });
+      const data = await response.json();
+      console.log(data.message);
+      this.fetchAccessRequests(currentProjectId); // Refresh access requests after accepting
+    } catch (error) {
+      console.error("Error accepting access request:", error);
+    }
   };
 
   render() {
-    const { projects, newProjectName } = this.state;
+    const { projects, newProjectName, accessRequests } = this.state;
 
     return (
       <Flex align="center" justify="center" height="100vh" bg="gray.900">
@@ -96,7 +188,7 @@ class ObjHome extends React.Component {
               <VStack spacing={4} align="stretch" width="100%">
                 {projects.map((project) => (
                   <Box
-                    key={project.id}
+                    key={project._id}
                     p={2}
                     borderWidth="1px"
                     borderRadius="lg"
@@ -108,21 +200,77 @@ class ObjHome extends React.Component {
                     onClick={() => this.handleSelectProject(project)}
                   >
                     <Text>{project.name}</Text>
-                    <Button
-                      colorScheme="red"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        this.handleDeleteProject(project.id);
-                      }}
-                    >
-                      Delete
-                    </Button>
+                    {!project.isAccepted && (
+                      <Button
+                        colorScheme="blue"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          this.handleRequestAccess(project._id);
+                        }}
+                      >
+                        Request Access
+                      </Button>
+                    )}
+                    {project.isAccepted && (
+                      <Button
+                        colorScheme="purple"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          this.fetchAccessRequests(project._id);
+                        }}
+                      >
+                        View Requests
+                      </Button>
+                    )}
                   </Box>
                 ))}
               </VStack>
             )}
           </VStack>
         </Box>
+        {accessRequests.length > 0 && (
+          <Box
+            width="350px"
+            p="6"
+            boxShadow="lg"
+            borderRadius="md"
+            bg="gray.800"
+            color="white"
+            ml={4}
+          >
+            <VStack
+              spacing={6}
+              as={motion.div}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1 }}
+            >
+              <Heading as="h1" size="lg" mb={4}>
+                Access Requests
+              </Heading>
+              {accessRequests.map((request) => (
+                <Box
+                  key={request._id}
+                  p={2}
+                  borderWidth="1px"
+                  borderRadius="lg"
+                  bg="gray.700"
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Text>{request.username}</Text>
+                  <Button
+                    colorScheme="teal"
+                    onClick={() => this.handleAcceptRequest(request._id)}
+                  >
+                    Accept
+                  </Button>
+                </Box>
+              ))}
+            </VStack>
+          </Box>
+        )}
       </Flex>
     );
   }

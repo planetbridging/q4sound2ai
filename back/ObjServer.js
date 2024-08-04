@@ -16,6 +16,23 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
 });
 
+const projectSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  acceptedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  accessRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+});
+
+projectSchema.pre("save", function (next) {
+  this.acceptedUsers = [
+    ...new Set(this.acceptedUsers.map((user) => user.toString())),
+  ];
+  next();
+});
+
+const User = mongoose.model("User", userSchema);
+const Project = mongoose.model("Project", projectSchema);
+
 class ObjServer {
   constructor() {
     this.app = express();
@@ -48,8 +65,9 @@ class ObjServer {
       this.db = mongoose.connection.useDb(process.env.MONGODB);
       console.log(`Switched to database: ${process.env.MONGODB}`);
 
-      // Create the User model using the new database connection
+      // Create the models using the new database connection
       this.User = this.db.model("User", userSchema);
+      this.Project = this.db.model("Project", projectSchema);
     } catch (err) {
       console.error("MongoDB connection error:", err);
     }
@@ -81,6 +99,33 @@ class ObjServer {
       this.verifyToken.bind(this),
       this.getProfile.bind(this)
     );
+    this.app.post(
+      "/api/projects",
+      this.verifyToken.bind(this),
+      this.createProject.bind(this)
+    );
+    this.app.get(
+      "/api/projects",
+      this.verifyToken.bind(this),
+      this.getProjects.bind(this)
+    );
+
+    this.app.post(
+      "/api/projects/request-access/:projectId",
+      this.verifyToken.bind(this),
+      this.requestAccessToProject.bind(this)
+    );
+    this.app.get(
+      "/api/projects/access-requests/:projectId",
+      this.verifyToken.bind(this),
+      this.getProjectAccessRequests.bind(this)
+    );
+    this.app.post(
+      "/api/projects/accept-request",
+      this.verifyToken.bind(this),
+      this.acceptProjectAccessRequest.bind(this)
+    );
+
     this.app.use(
       "/",
       createProxyMiddleware({
@@ -91,6 +136,74 @@ class ObjServer {
         },
       })
     );
+  }
+
+  async requestAccessToProject(req, res) {
+    const { projectId } = req.params;
+    const user = await this.User.findOne({ username: req.username });
+    try {
+      const project = await this.Project.findById(projectId);
+      if (project) {
+        project.accessRequests.push(user._id);
+        await project.save();
+        res.status(200).json({ message: "Access request sent" });
+      } else {
+        res.status(404).json({ error: "Project not found" });
+      }
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async getProjectAccessRequests(req, res) {
+    const { projectId } = req.params;
+    const project = await this.Project.findById(projectId).populate(
+      "accessRequests"
+    );
+    res.status(200).json({ accessRequests: project.accessRequests });
+  }
+
+  async getProjects(req, res) {
+    const user = await this.User.findOne({ username: req.username });
+    const projects = await this.Project.find().populate("owner acceptedUsers");
+
+    // Filter projects to include only accepted details if the user is on the accepted list
+    const filteredProjects = projects.map((project) => {
+      const isAccepted = project.acceptedUsers.some((acceptedUser) =>
+        acceptedUser._id.equals(user._id)
+      );
+      return {
+        _id: project._id,
+        name: project.name,
+        owner: project.owner.username,
+        isAccepted,
+      };
+    });
+
+    res.status(200).json({ projects: filteredProjects });
+  }
+
+  async acceptProjectAccessRequest(req, res) {
+    const { projectId, userId } = req.body;
+    try {
+      const project = await this.Project.findById(projectId);
+      if (project) {
+        // Check if the user is already in the acceptedUsers array
+        if (!project.acceptedUsers.includes(userId)) {
+          project.acceptedUsers.push(userId);
+        }
+        // Remove the user from the accessRequests array
+        project.accessRequests = project.accessRequests.filter(
+          (requestId) => !requestId.equals(userId)
+        );
+        await project.save();
+        res.status(200).json({ message: "User accepted to the project" });
+      } else {
+        res.status(404).json({ error: "Project not found" });
+      }
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
   }
 
   async registerUser(req, res) {
@@ -132,7 +245,7 @@ class ObjServer {
     }
   }
 
-  logoutUser(req, res) {
+  async logoutUser(req, res) {
     res.clearCookie("token");
     res.status(200).json({ message: "Logged out successfully" });
   }
@@ -157,6 +270,30 @@ class ObjServer {
 
   getProfile(req, res) {
     res.status(200).json({ message: `Welcome ${req.username}` });
+  }
+
+  async createProject(req, res) {
+    const { name } = req.body;
+    const owner = await this.User.findOne({ username: req.username });
+    const project = new this.Project({
+      name,
+      owner: owner._id,
+      acceptedUsers: [owner._id],
+    });
+    try {
+      await project.save();
+      res
+        .status(200)
+        .json({ message: "Project created successfully", project });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async getUserProjects(req, res) {
+    const user = await this.User.findOne({ username: req.username });
+    const projects = await this.Project.find({ acceptedUsers: user._id });
+    res.status(200).json({ projects });
   }
 
   start() {
