@@ -1,7 +1,7 @@
 import os
 import hashlib
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 import tensorflow as tf
 import tensorflowjs as tfjs
@@ -20,7 +20,7 @@ def calculate_md5(data):
     md5_hash.update(data.encode('utf-8'))
     return md5_hash.hexdigest()
 
-@app.route('/upload/spectrogram', methods=['POST'])
+@app.route('/api/upload/spectrogram', methods=['POST'])
 def upload_spectrogram():
     project_id = request.form.get('project_id')
     labels = request.form.get('labels')
@@ -32,7 +32,7 @@ def upload_spectrogram():
     md5_hash = calculate_md5(spectrogram)
     filename = f"{md5_hash}.json"
 
-    project_folder = os.path.join(app.config['UPLOAD_FOLDER'], project_id, 'JSON')
+    project_folder = os.path.join(app.config['UPLOAD_FOLDER'], project_id, 'jsondata')
     os.makedirs(project_folder, exist_ok=True)
 
     filepath = os.path.join(project_folder, filename)
@@ -48,7 +48,7 @@ def upload_spectrogram():
 
     return jsonify({'message': 'File saved', 'md5': md5_hash}), 200
 
-@app.route('/upload/aiModel', methods=['POST'])
+@app.route('/api/upload/aiModel', methods=['POST'])
 def upload_ai_model():
     project_id = request.form.get('project_id')
     file = request.files.get('file')
@@ -75,25 +75,37 @@ def upload_ai_model():
 
     return jsonify({'message': 'File saved', 'path': filepath}), 200
 
-@app.route('/files/<project_id>', methods=['GET'])
+@app.route('/api/files/<project_id>', methods=['GET'])
 def list_files(project_id):
     project_folder = os.path.join(app.config['UPLOAD_FOLDER'], project_id)
     files = {}
-    for folder in ['JSON', 'aiModels']:
+    for folder in ['jsondata', 'aiModels']:
         folder_path = os.path.join(project_folder, folder)
         if os.path.exists(folder_path):
             files[folder] = os.listdir(folder_path)
     return jsonify(files), 200
 
-@app.route('/files/view/<project_id>/<folder>/<filename>', methods=['GET'])
+@app.route('/api/files/view/<project_id>/<folder>/<filename>', methods=['GET'])
 def view_file(project_id, folder, filename):
     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], project_id, folder)
-    filepath = os.path.join(folder_path, filename)
-    if os.path.exists(filepath):
-        with open(filepath, 'r') as f:
-            data = f.read()
-        return data, 200
+    if os.path.exists(folder_path):
+        return send_from_directory(folder_path, filename)
     return jsonify({'error': 'File not found'}), 404
+
+@app.route('/api/models/<project_id>/<model_name>', methods=['POST'])
+def run_inference(project_id, model_name):
+    model_path = os.path.join(app.config['UPLOAD_FOLDER'], project_id, 'aiModels', model_name)
+    if not os.path.exists(model_path):
+        return jsonify({'error': 'Model not found'}), 404
+
+    model = tf.keras.models.load_model(model_path)
+    data = request.json.get('data')
+
+    if not data:
+        return jsonify({'error': 'No data provided for inference'}), 400
+
+    predictions = model.predict(data)
+    return jsonify({'predictions': predictions.tolist()}), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
