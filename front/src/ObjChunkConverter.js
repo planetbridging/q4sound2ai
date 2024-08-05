@@ -8,10 +8,15 @@ import {
   Button,
   Checkbox,
   Progress,
+  Wrap,
+  WrapItem,
+  Stack,
 } from "@chakra-ui/react";
 import WaveSurfer from "wavesurfer.js";
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 import SpectrogramPlugin from "wavesurfer.js/dist/plugins/spectrogram";
+
+import md5 from "md5";
 
 import { convertToWavChunk } from "./audioUtils";
 
@@ -142,10 +147,17 @@ class ObjChunkConverter extends Component {
       spectrogramData.push(avg / 255.0); // Normalize to [0, 1]
     }
 
+    const spectrogramMD5 = this.generateMD5(spectrogramData);
+    console.log(`MD5 Hash for ${fileName}_${chunkId}: ${spectrogramMD5}`);
+
     const key = `${fileName}_${chunkId}`;
     this.setState((prevState) => {
       const updatedMap = new Map(prevState.labeledData);
-      updatedMap.set(key, { spectrogram: spectrogramData, labels: labels });
+      updatedMap.set(key, {
+        spectrogram: spectrogramData,
+        labels: labels,
+        md5: spectrogramMD5,
+      });
       return { labeledData: updatedMap };
     });
 
@@ -171,6 +183,10 @@ class ObjChunkConverter extends Component {
     }
   };
 
+  generateMD5 = (data) => {
+    return md5(JSON.stringify(data));
+  };
+
   render() {
     const { mapChunkWithLabel } = this.props;
     const {
@@ -191,25 +207,28 @@ class ObjChunkConverter extends Component {
           {generatingAll ? "Generating..." : "Generate All Spectrograms"}
         </Button>
         {generatingAll && <Progress value={progress} size="sm" mt={2} />}
-        <VStack spacing={4} align="stretch" mt={4}>
+        <Wrap spacing={4} align="stretch" mt={4}>
           {Array.from(mapChunkWithLabel.entries()).map(
             ([chunkId, chunkData]) => {
               const key = `${chunkData.uniqPassFile.name}_${chunkId}`;
               const isChecked = labeledData.has(key);
+              const md5Hash = labeledData.get(key)?.md5;
               return (
-                <Box
+                <WrapItem
                   key={chunkId}
                   p={4}
                   borderWidth="1px"
                   borderRadius="lg"
                   bg="gray.700"
-                  width="100%"
                 >
                   <Flex>
-                    <Text>
-                      Chunk {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
-                      {chunkData.uniqPassIn.end}s
-                    </Text>
+                    <Stack>
+                      <Text>
+                        Chunk {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
+                        {chunkData.uniqPassIn.end}s
+                      </Text>
+                      <Text>{md5Hash}</Text>
+                    </Stack>
                     <Spacer />
                     <VStack align="stretch">
                       <Text>File: {chunkData.uniqPassFile.name}</Text>
@@ -231,11 +250,11 @@ class ObjChunkConverter extends Component {
                       </Button>
                     </VStack>
                   </Flex>
-                </Box>
+                </WrapItem>
               );
             }
           )}
-        </VStack>
+        </Wrap>
         {chunkUrl && (
           <Box mt={4}>
             <Text mb={2}>
@@ -249,15 +268,16 @@ class ObjChunkConverter extends Component {
             </Button>
           </Box>
         )}
-        <Box mt={4}>
-          <Text>Labeled Data:</Text>
-          <pre>
-            {JSON.stringify(Array.from(labeledData.entries()), null, 2)}
-          </pre>
-        </Box>
       </Box>
     );
   }
 }
+
+/*        <Box mt={4}>
+          <Text>Labeled Data:</Text>
+          <pre>
+            {JSON.stringify(Array.from(labeledData.entries()), null, 2)}
+          </pre>
+        </Box>*/
 
 export default ObjChunkConverter;
