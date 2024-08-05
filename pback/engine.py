@@ -1,10 +1,10 @@
+from flask import Flask, request, jsonify, send_from_directory
 import os
 import hashlib
 import json
-from flask import Flask, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
 import tensorflow as tf
 import tensorflowjs as tfjs
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -20,14 +20,31 @@ def calculate_md5(data):
     md5_hash.update(data.encode('utf-8'))
     return md5_hash.hexdigest()
 
-@app.route('/api/upload/spectrogram', methods=['POST'])
+def log_request(f):
+    def decorated_function(*args, **kwargs):
+        print(f"Request: {request.url}, Data: {request.form}")
+        return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
+
+@app.route('/upload/spectrogram', methods=['POST'])
+@log_request
 def upload_spectrogram():
-    project_id = request.form.get('project_id')
-    labels = request.form.get('labels')
-    spectrogram = request.form.get('spectrogram')
-    
-    if not project_id or not labels or not spectrogram:
+    if 'project_id' not in request.form or 'spectrogram' not in request.form or 'labels' not in request.form:
         return jsonify({'error': 'Missing project_id, labels, or spectrogram'}), 400
+
+    project_id = request.form['project_id']
+    labels = request.form['labels']
+    spectrogram = request.form['spectrogram']
+
+    print(f"Received labels: {labels}")
+    print(f"Received spectrogram: {spectrogram}")
+
+    try:
+        labels_json = json.loads(labels)
+        spectrogram_json = json.loads(spectrogram)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid JSON format: {str(e)}'}), 400
 
     md5_hash = calculate_md5(spectrogram)
     filename = f"{md5_hash}.json"
@@ -38,8 +55,8 @@ def upload_spectrogram():
     filepath = os.path.join(project_folder, filename)
     
     data = {
-        'labels': json.loads(labels),
-        'spectrogram': json.loads(spectrogram),
+        'labels': labels_json,
+        'spectrogram': spectrogram_json,
         'md5': md5_hash
     }
 
@@ -48,7 +65,9 @@ def upload_spectrogram():
 
     return jsonify({'message': 'File saved', 'md5': md5_hash}), 200
 
-@app.route('/api/upload/aiModel', methods=['POST'])
+
+@app.route('/upload/aiModel', methods=['POST'])
+@log_request
 def upload_ai_model():
     project_id = request.form.get('project_id')
     file = request.files.get('file')
@@ -75,7 +94,7 @@ def upload_ai_model():
 
     return jsonify({'message': 'File saved', 'path': filepath}), 200
 
-@app.route('/api/files/<project_id>', methods=['GET'])
+@app.route('/files/<project_id>', methods=['GET'])
 def list_files(project_id):
     project_folder = os.path.join(app.config['UPLOAD_FOLDER'], project_id)
     files = {}
@@ -85,14 +104,15 @@ def list_files(project_id):
             files[folder] = os.listdir(folder_path)
     return jsonify(files), 200
 
-@app.route('/api/files/view/<project_id>/<folder>/<filename>', methods=['GET'])
+@app.route('/files/view/<project_id>/<folder>/<filename>', methods=['GET'])
 def view_file(project_id, folder, filename):
     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], project_id, folder)
     if os.path.exists(folder_path):
         return send_from_directory(folder_path, filename)
     return jsonify({'error': 'File not found'}), 404
 
-@app.route('/api/models/<project_id>/<model_name>', methods=['POST'])
+@app.route('/models/<project_id>/<model_name>', methods=['POST'])
+@log_request
 def run_inference(project_id, model_name):
     model_path = os.path.join(app.config['UPLOAD_FOLDER'], project_id, 'aiModels', model_name)
     if not os.path.exists(model_path):
@@ -107,5 +127,19 @@ def run_inference(project_id, model_name):
     predictions = model.predict(data)
     return jsonify({'predictions': predictions.tolist()}), 200
 
+@app.route('/test', methods=['POST'])
+@log_request
+def test_endpoint():
+    data = request.get_json()
+    response = {
+        'received': True,
+        'data': data
+    }
+    return jsonify(response), 200
+
+@app.route('/')
+def phealthcheck():
+    return "Hello from Python engine backend!"
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=50999, debug=True)

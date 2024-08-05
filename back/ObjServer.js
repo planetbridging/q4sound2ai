@@ -77,6 +77,7 @@ class ObjServer {
   initializeMiddlewares() {
     this.app.use(express.json());
     this.app.use(cookieParser());
+    this.app.use(express.urlencoded({ extended: true }));
     this.app.use(
       session({
         secret: process.env.SESSION_SECRET || "your_session_secret",
@@ -136,6 +137,29 @@ class ObjServer {
       "/api/projects/:projectId/labels",
       this.verifyToken.bind(this),
       this.updateProjectLabels.bind(this)
+    );
+
+    this.app.use(
+      "/pback",
+      createProxyMiddleware({
+        target: `http://${this.proxyTo}:50999`,
+        changeOrigin: true,
+        pathRewrite: {
+          "^/pback": "/pback",
+        },
+      })
+    );
+
+    this.app.use(
+      "/phealthcheck",
+      this.verifyToken.bind(this),
+      createProxyMiddleware({
+        target: `http://${this.proxyTo}:50999`, // Replace with your Python backend URL
+        changeOrigin: true,
+        pathRewrite: {
+          "^/phealthcheck": "/phealthcheck",
+        },
+      })
     );
 
     this.app.use(

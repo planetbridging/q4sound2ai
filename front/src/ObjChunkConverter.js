@@ -75,10 +75,17 @@ class ObjChunkConverter extends Component {
       const key = `${uniqPassFile.name}_${uniqPassIn.id}`;
       this.setState((prevState) => {
         const updatedMap = new Map(prevState.labeledData);
+        console.log({
+          spectrogram: spectrogramData,
+          labels: lstCats,
+          md5: spectrogramMD5,
+          uploaded: false,
+        });
         updatedMap.set(key, {
           spectrogram: spectrogramData,
           labels: lstCats,
           md5: spectrogramMD5,
+          uploaded: false,
         });
         return { labeledData: updatedMap };
       });
@@ -86,6 +93,60 @@ class ObjChunkConverter extends Component {
       console.log(`Spectrogram data extracted for: ${key}`);
     } catch (error) {
       console.error("Error generating spectrogram:", error);
+    }
+  };
+
+  handleUpload = async (key) => {
+    const { projectId } = this.props;
+    const chunkData = this.state.labeledData.get(key);
+
+    console.log(`Project ID: ${projectId}`);
+    console.log(`Chunk Data:`, chunkData);
+
+    if (!chunkData || !chunkData.labels || !chunkData.spectrogram) {
+      console.error("Invalid chunk data:", chunkData);
+      return;
+    }
+
+    const formData = new FormData();
+    const labelsJson = JSON.stringify(chunkData.labels);
+    const spectrogramJson = JSON.stringify(chunkData.spectrogram);
+
+    console.log(`Uploading with labels: ${labelsJson}`);
+    console.log(`Uploading with spectrogram: ${spectrogramJson}`);
+
+    formData.append("project_id", projectId);
+    formData.append("labels", labelsJson);
+    formData.append("spectrogram", spectrogramJson);
+
+    try {
+      const response = await fetch(
+        "http://localhost:888/pback/upload/spectrogram",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        const errorStatus = response.status;
+        const errorText = await response.text(); // Extract error message
+        throw new Error(
+          `Error uploading spectrogram: ${errorStatus} - ${errorText}`
+        );
+      }
+
+      const result = await response.json();
+      this.setState((prevState) => {
+        const updatedMap = new Map(prevState.labeledData);
+        const updatedChunkData = { ...updatedMap.get(key), uploaded: true };
+        updatedMap.set(key, updatedChunkData);
+        return { labeledData: updatedMap };
+      });
+      console.log(`Uploaded successfully: ${key}`);
+    } catch (error) {
+      console.log("Error uploading spectrogram:", error);
+      // Display a user-friendly error message using state management or error toasts
     }
   };
 
@@ -138,6 +199,7 @@ class ObjChunkConverter extends Component {
             ([chunkId, chunkData]) => {
               const key = `${chunkData.uniqPassFile.name}_${chunkId}`;
               const isChecked = labeledData.has(key);
+              const isUploaded = labeledData.get(key)?.uploaded;
               const md5Hash = labeledData.get(key)?.md5;
               const spectrogramData = labeledData.get(key)?.spectrogram;
               return (
@@ -186,6 +248,13 @@ class ObjChunkConverter extends Component {
                             {isChecked
                               ? "Already Generated"
                               : "Generate Spectrogram"}
+                          </Button>
+                          <Button
+                            onClick={() => this.handleUpload(key)}
+                            disabled={!isChecked || isUploaded}
+                            colorScheme={isUploaded ? "green" : "red"}
+                          >
+                            {isUploaded ? "Already Uploaded" : "Upload"}
                           </Button>
                         </Box>
                         {spectrogramData && (

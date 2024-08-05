@@ -422,7 +422,10 @@ class ObjProject extends React.Component {
             </TabPanel>
 
             <TabPanel>
-              <ObjChunkConverter mapChunkWithLabel={mapChunkWithLabel} />
+              <ObjChunkConverter
+                mapChunkWithLabel={mapChunkWithLabel}
+                projectId={projectId}
+              />
             </TabPanel>
             <TabPanel>
               <p>four!</p>
