@@ -11,6 +11,11 @@ import {
   Wrap,
   WrapItem,
   Stack,
+  Card,
+  CardHeader,
+  Heading,
+  StackDivider,
+  CardBody,
 } from "@chakra-ui/react";
 import WaveSurfer from "wavesurfer.js";
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
@@ -221,35 +226,49 @@ class ObjChunkConverter extends Component {
                   borderRadius="lg"
                   bg="gray.700"
                 >
-                  <Flex>
-                    <Stack>
-                      <Text>
-                        Chunk {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
-                        {chunkData.uniqPassIn.end}s
-                      </Text>
-                      <Text>{md5Hash}</Text>
-                    </Stack>
-                    <Spacer />
-                    <VStack align="stretch">
-                      <Text>File: {chunkData.uniqPassFile.name}</Text>
-                      <Text>Category: {chunkData.lstCats[0]}</Text>
-                      <Text>Subcategory: {chunkData.lstCats[1]}</Text>
-                      <Text>Sub-subcategory: {chunkData.lstCats[2]}</Text>
-                      <Checkbox isChecked={isChecked} isDisabled>
-                        Processed
-                      </Checkbox>
-                      <Button
-                        onClick={() =>
-                          this.handleGenerateSpectrogram(chunkData)
-                        }
-                        disabled={isChecked}
-                      >
-                        {isChecked
-                          ? "Already Generated"
-                          : "Generate Spectrogram"}
-                      </Button>
-                    </VStack>
-                  </Flex>
+                  <Card bg="transparent" color={"white"}>
+                    <CardBody>
+                      <Stack divider={<StackDivider />} spacing="4">
+                        <Box>
+                          <Heading size="xs" textTransform="uppercase">
+                            {chunkId}: {chunkData.uniqPassIn.start}s -{" "}
+                            {chunkData.uniqPassIn.end}
+                          </Heading>
+                          <Text pt="2" fontSize="sm">
+                            {md5Hash}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Heading size="xs" textTransform="uppercase">
+                            File: {chunkData.uniqPassFile.name}
+                          </Heading>
+                          <Stack>
+                            <Text>Category: {chunkData.lstCats[0]}</Text>
+                            <Text>Subcategory: {chunkData.lstCats[1]}</Text>
+                            <Text>Sub-subcategory: {chunkData.lstCats[2]}</Text>
+                          </Stack>
+                        </Box>
+                        <Box>
+                          <Heading size="xs" textTransform="uppercase">
+                            <Checkbox isChecked={isChecked} isDisabled>
+                              Processed
+                            </Checkbox>
+                          </Heading>
+
+                          <Button
+                            onClick={() =>
+                              this.handleGenerateSpectrogram(chunkData)
+                            }
+                            disabled={isChecked}
+                          >
+                            {isChecked
+                              ? "Already Generated"
+                              : "Generate Spectrogram"}
+                          </Button>
+                        </Box>
+                      </Stack>
+                    </CardBody>
+                  </Card>
                 </WrapItem>
               );
             }
