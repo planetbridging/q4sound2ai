@@ -1,5 +1,6 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
+import FFT from "fft.js";
 
 const ffmpeg = new FFmpeg();
 
@@ -79,4 +80,39 @@ const convertToWavChunk = async (file, start, end, onProgress) => {
   }
 };
 
-export { convertToWav, convertToWavChunk };
+const generateSpectrogram = (audioBuffer) => {
+  const fft = new FFT(1024);
+  const out = fft.createComplexArray();
+  const input = new Float32Array(audioBuffer);
+
+  fft.realTransform(out, input);
+  fft.completeSpectrum(out);
+
+  const spectrogramData = [];
+  for (let i = 0; i < out.length; i += 2) {
+    const magnitude = Math.sqrt(out[i] ** 2 + out[i + 1] ** 2);
+    spectrogramData.push(magnitude);
+  }
+
+  return spectrogramData;
+};
+
+const convertToWavWithSpectrogram = async (file, start, end, onProgress) => {
+  const chunkUrl = await convertToWavChunk(file, start, end, onProgress);
+
+  // Load the WAV file using fetch and decode audio data
+  const response = await fetch(chunkUrl);
+  const arrayBuffer = await response.arrayBuffer();
+
+  // Create an AudioContext to decode the audio data
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+  // Convert audio data to Float32Array for FFT
+  const channelData = audioBuffer.getChannelData(0);
+  const spectrogramData = generateSpectrogram(channelData.buffer);
+
+  return { chunkUrl, spectrogramData };
+};
+
+export { convertToWav, convertToWavChunk, convertToWavWithSpectrogram };

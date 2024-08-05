@@ -17,20 +17,14 @@ import {
   StackDivider,
   CardBody,
 } from "@chakra-ui/react";
-import WaveSurfer from "wavesurfer.js";
-import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
-import SpectrogramPlugin from "wavesurfer.js/dist/plugins/spectrogram";
 
 import md5 from "md5";
 
-import { convertToWavChunk } from "./audioUtils";
+import { convertToWavWithSpectrogram } from "./audioUtils";
 
 class ObjChunkConverter extends Component {
   constructor(props) {
     super(props);
-    this.waveSurferRef = React.createRef();
-    this.timelineRef = React.createRef();
-    this.spectrogramRef = React.createRef();
     this.state = {
       chunkUrl: null,
       chunkDuration: 0,
@@ -39,7 +33,6 @@ class ObjChunkConverter extends Component {
       generatingAll: false,
       progress: 0,
     };
-    this.waveSurferInstance = null; // Initialize waveSurferInstance as null
   }
 
   handleGenerateAllSpectrograms = async () => {
@@ -66,125 +59,33 @@ class ObjChunkConverter extends Component {
     const end = uniqPassIn.end;
 
     try {
-      const chunkUrl = await convertToWavChunk(uniqPassFile, start, end, null);
-      console.log(`Converted to WAV: ${chunkUrl}`);
-      this.setState({ chunkUrl }, () => {
-        this.initWaveSurfer(
-          chunkUrl,
-          uniqPassFile.name,
-          chunkData.uniqPassIn.id,
-          lstCats,
-          isBatch
-        );
+      const { chunkUrl, spectrogramData } = await convertToWavWithSpectrogram(
+        uniqPassFile,
+        start,
+        end,
+        null
+      );
+      console.log(`Converted to WAV and generated spectrogram: ${chunkUrl}`);
+
+      const spectrogramMD5 = this.generateMD5(spectrogramData);
+      console.log(
+        `MD5 Hash for ${uniqPassFile.name}_${uniqPassIn.id}: ${spectrogramMD5}`
+      );
+
+      const key = `${uniqPassFile.name}_${uniqPassIn.id}`;
+      this.setState((prevState) => {
+        const updatedMap = new Map(prevState.labeledData);
+        updatedMap.set(key, {
+          spectrogram: spectrogramData,
+          labels: lstCats,
+          md5: spectrogramMD5,
+        });
+        return { labeledData: updatedMap };
       });
+
+      console.log(`Spectrogram data extracted for: ${key}`);
     } catch (error) {
       console.error("Error generating spectrogram:", error);
-    }
-  };
-
-  initWaveSurfer = (url, fileName, chunkId, labels, isBatch) => {
-    if (this.waveSurferInstance) {
-      this.waveSurferInstance.destroy();
-    }
-
-    this.waveSurferInstance = WaveSurfer.create({
-      container: this.waveSurferRef.current,
-      waveColor: "violet",
-      progressColor: "purple",
-      responsive: true,
-      height: 100,
-      barWidth: 2,
-      cursorWidth: 1,
-      backend: "WebAudio",
-      plugins: [
-        TimelinePlugin.create({
-          container: this.timelineRef.current,
-        }),
-        SpectrogramPlugin.create({
-          container: this.spectrogramRef.current,
-          labels: true,
-        }),
-      ],
-    });
-
-    this.waveSurferInstance.load(url);
-    this.waveSurferInstance.on("ready", () => {
-      const duration = this.waveSurferInstance.getDuration();
-      this.setState({ chunkDuration: duration });
-
-      // Extract spectrogram data
-      this.extractSpectrogramData(fileName, chunkId, labels, isBatch);
-    });
-    this.waveSurferInstance.on("error", (error) => {
-      console.error("Error loading audio data:", error);
-    });
-    this.waveSurferInstance.on("play", () =>
-      this.setState({ isPlaying: true })
-    );
-    this.waveSurferInstance.on("pause", () =>
-      this.setState({ isPlaying: false })
-    );
-  };
-
-  extractSpectrogramData = (fileName, chunkId, labels, isBatch) => {
-    const canvas = this.spectrogramRef.current.querySelector("canvas");
-    if (!canvas) {
-      console.error("Canvas element not found.");
-      return;
-    }
-
-    const context = canvas.getContext("2d");
-    if (!context) {
-      console.error("Failed to get 2D context.");
-      return;
-    }
-
-    const pixelData = context.getImageData(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    ).data;
-
-    const spectrogramData = [];
-    for (let i = 0; i < pixelData.length; i += 4) {
-      const avg = (pixelData[i] + pixelData[i + 1] + pixelData[i + 2]) / 3;
-      spectrogramData.push(avg / 255.0); // Normalize to [0, 1]
-    }
-
-    const spectrogramMD5 = this.generateMD5(spectrogramData);
-    console.log(`MD5 Hash for ${fileName}_${chunkId}: ${spectrogramMD5}`);
-
-    const key = `${fileName}_${chunkId}`;
-    this.setState((prevState) => {
-      const updatedMap = new Map(prevState.labeledData);
-      updatedMap.set(key, {
-        spectrogram: spectrogramData,
-        labels: labels,
-        md5: spectrogramMD5,
-      });
-      return { labeledData: updatedMap };
-    });
-
-    console.log(`Spectrogram data extracted for: ${key}`);
-
-    if (isBatch) {
-      this.cleanUpWaveSurferInstance();
-    }
-  };
-
-  cleanUpWaveSurferInstance = () => {
-    if (this.waveSurferInstance) {
-      this.waveSurferInstance.unAll();
-      this.waveSurferInstance.destroy();
-      this.waveSurferInstance = null;
-      console.log("WaveSurfer instance cleaned up.");
-    }
-  };
-
-  handlePlayPause = () => {
-    if (this.waveSurferInstance) {
-      this.waveSurferInstance.playPause();
     }
   };
 
@@ -192,16 +93,36 @@ class ObjChunkConverter extends Component {
     return md5(JSON.stringify(data));
   };
 
+  drawSpectrogram = (canvas, spectrogramData) => {
+    const context = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    const imageData = context.createImageData(width, height);
+    const data = imageData.data;
+
+    // Find max and min values in the spectrogramData for normalization
+    const maxVal = Math.max(...spectrogramData);
+    const minVal = Math.min(...spectrogramData);
+
+    // Adjust the contrast and color mapping
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        const index = (x + y * width) * 4;
+        const value = spectrogramData[x * height + y];
+        const normalizedValue = ((value - minVal) / (maxVal - minVal)) * 255;
+        data[index] = normalizedValue;
+        data[index + 1] = normalizedValue;
+        data[index + 2] = normalizedValue;
+        data[index + 3] = 255; // Alpha channel
+      }
+    }
+
+    context.putImageData(imageData, 0, 0);
+  };
+
   render() {
     const { mapChunkWithLabel } = this.props;
-    const {
-      chunkUrl,
-      chunkDuration,
-      isPlaying,
-      labeledData,
-      generatingAll,
-      progress,
-    } = this.state;
+    const { generatingAll, progress, labeledData } = this.state;
 
     return (
       <Box>
@@ -218,6 +139,7 @@ class ObjChunkConverter extends Component {
               const key = `${chunkData.uniqPassFile.name}_${chunkId}`;
               const isChecked = labeledData.has(key);
               const md5Hash = labeledData.get(key)?.md5;
+              const spectrogramData = labeledData.get(key)?.spectrogram;
               return (
                 <WrapItem
                   key={chunkId}
@@ -266,6 +188,21 @@ class ObjChunkConverter extends Component {
                               : "Generate Spectrogram"}
                           </Button>
                         </Box>
+                        {spectrogramData && (
+                          <Box>
+                            <Heading size="xs" textTransform="uppercase">
+                              Spectrogram
+                            </Heading>
+                            <canvas
+                              ref={(canvas) =>
+                                canvas &&
+                                this.drawSpectrogram(canvas, spectrogramData)
+                              }
+                              width={256}
+                              height={256}
+                            />
+                          </Box>
+                        )}
                       </Stack>
                     </CardBody>
                   </Card>
@@ -274,29 +211,9 @@ class ObjChunkConverter extends Component {
             }
           )}
         </Wrap>
-        {chunkUrl && (
-          <Box mt={4}>
-            <Text mb={2}>
-              Spectrogram (Duration: {chunkDuration.toFixed(2)}s):
-            </Text>
-            <div ref={this.waveSurferRef}></div>
-            <div ref={this.timelineRef}></div>
-            <div ref={this.spectrogramRef}></div>
-            <Button onClick={this.handlePlayPause}>
-              {isPlaying ? "Pause" : "Play"}
-            </Button>
-          </Box>
-        )}
       </Box>
     );
   }
 }
-
-/*        <Box mt={4}>
-          <Text>Labeled Data:</Text>
-          <pre>
-            {JSON.stringify(Array.from(labeledData.entries()), null, 2)}
-          </pre>
-        </Box>*/
 
 export default ObjChunkConverter;
