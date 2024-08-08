@@ -215,4 +215,6 @@ class NeuroArchitect {
   }
 }
 
-export default NeuroArchitect;
+if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
+  module.exports = NeuroArchitect;
+}

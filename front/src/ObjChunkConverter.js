@@ -120,13 +120,10 @@ class ObjChunkConverter extends Component {
     formData.append("spectrogram", spectrogramJson);
 
     try {
-      const response = await fetch(
-        "http://localhost:888/pback/upload/spectrogram",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch("/pback/upload/spectrogram", {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         const errorStatus = response.status;

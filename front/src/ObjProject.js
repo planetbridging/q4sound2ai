@@ -34,6 +34,7 @@ import withParams from "./withParams";
 import ObjLabelManager from "./ObjLabelManager";
 import ObjSelectLabel from "./ObjSelectLabel";
 import ObjChunkConverter from "./ObjChunkConverter";
+import ObjAiTrainer from "./ObjAiTrainer";
 
 class ObjProject extends React.Component {
   constructor(props) {
@@ -428,7 +429,7 @@ class ObjProject extends React.Component {
               />
             </TabPanel>
             <TabPanel>
-              <p>four!</p>
+              <ObjAiTrainer projectId={projectId} />
             </TabPanel>
           </TabPanels>
         </Tabs>

@@ -13,6 +13,8 @@ import { AddIcon } from "@chakra-ui/icons";
 import { motion } from "framer-motion";
 import withNavigation from "./withNavigation";
 
+//import SimpleNAS from "./SimpleNAS";
+
 class ObjHome extends React.Component {
   constructor(props) {
     super(props);
@@ -26,6 +28,7 @@ class ObjHome extends React.Component {
 
   componentDidMount() {
     this.fetchProjects();
+    //var t = new SimpleNAS();
   }
 
   fetchProjects = async () => {

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 import os
 import hashlib
 import json
@@ -65,7 +65,6 @@ def upload_spectrogram():
 
     return jsonify({'message': 'File saved', 'md5': md5_hash}), 200
 
-
 @app.route('/upload/aiModel', methods=['POST'])
 @log_request
 def upload_ai_model():
@@ -108,7 +107,11 @@ def list_files(project_id):
 def view_file(project_id, folder, filename):
     folder_path = os.path.join(app.config['UPLOAD_FOLDER'], project_id, folder)
     if os.path.exists(folder_path):
-        return send_from_directory(folder_path, filename)
+        response = make_response(send_from_directory(folder_path, filename))
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     return jsonify({'error': 'File not found'}), 404
 
 @app.route('/models/<project_id>/<model_name>', methods=['POST'])

@@ -139,18 +139,41 @@ class ObjServer {
       this.updateProjectLabels.bind(this)
     );
 
+    const noCacheMiddleware = (req, res, next) => {
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+      );
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      res.setHeader("Surrogate-Control", "no-store");
+      next();
+    };
+
+    this.app.use(noCacheMiddleware);
+
     this.app.use(
       "/pback",
       createProxyMiddleware({
         target: `http://${this.proxyTo}:50999`,
         changeOrigin: true,
         pathRewrite: {
-          "^/pback": "/pback",
+          "^/pback": "",
+        },
+        timeout: 30000, // Increase timeout to 30 seconds
+        proxyTimeout: 30000, // Increase proxy timeout to 30 seconds
+        onProxyRes: function (proxyRes, req, res) {
+          // Disable caching on the proxy response
+          proxyRes.headers["Cache-Control"] =
+            "no-store, no-cache, must-revalidate, proxy-revalidate";
+          proxyRes.headers["Pragma"] = "no-cache";
+          proxyRes.headers["Expires"] = "0";
+          proxyRes.headers["Surrogate-Control"] = "no-store";
         },
       })
     );
 
-    this.app.use(
+    /*this.app.use(
       "/phealthcheck",
       this.verifyToken.bind(this),
       createProxyMiddleware({
@@ -160,7 +183,7 @@ class ObjServer {
           "^/phealthcheck": "/phealthcheck",
         },
       })
-    );
+    );*/
 
     this.app.use(
       "/",
